@@ -1,7 +1,21 @@
 import psutil
 import datetime
 import platform
+from dotenv import load_dotenv
 import json
+import google.generativeai as genai
+from google.generativeai import types
+import os
+import save as sv
+
+load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
+
+if not api_key:
+    raise ValueError("API key not found! Make sure .env file exists and contains GEMINI_API_KEY.")
+
+system_data_json = ""
 
 def get_cpu_usage():
     return psutil.cpu_percent(interval=1)
@@ -91,6 +105,7 @@ def get_processes_info():
     return sorted_processes[:5]
 
 def main():
+    global system_data_json
     timestamp = datetime.datetime.now().isoformat()
 
     psutil.cpu_percent(interval=None) 
@@ -108,7 +123,31 @@ def main():
         "processes": get_processes_info()
     }
 
-    print(json.dumps(system_data, indent=4))
+    system_data_json = json.dumps(system_data, indent=4)
 
 if __name__ == "__main__":
     main()
+
+system_instruction_template = (
+    f"{system_data_json}\n"
+)
+
+config = types.GenerationConfig(
+    temperature=0.1,
+    max_output_tokens=500,
+)
+
+model = genai.GenerativeModel(
+    model_name="gemini-2.0-flash",
+    system_instruction=system_instruction_template,
+    generation_config=config
+)
+
+while True:
+    user_input = input("What do you want to ask?\n> ")
+    if user_input.lower() == "exit":
+        print("Goodbye!")
+        break
+
+    response = model.generate_content(user_input)
+    print("\n Response:\n", response.text)
