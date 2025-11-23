@@ -2,10 +2,11 @@ import psutil
 import datetime
 import platform
 import time
+import json
 import os
 import collections
 from toon import encode
-
+from pathlib import Path
 def get_cpu_usage():
     return psutil.cpu_percent(interval=1)
 
@@ -122,9 +123,21 @@ def main():
             root_object = {
                 "system_history": list(data_history)
             }
-            
-            print(encode(root_object))
-            
+            result = encode(root_object)
+            print(result)
+            file_path = "data/history.json"
+            if not os.path.exists(file_path):
+                directory = os.path.dirname(file_path)
+                if directory and not os.path.exists(directory):
+                    os.makedirs(directory) # Creates directory and any necessary parent directories
+
+                with open(file_path, 'w') as f:
+                    f.write("[\n]")
+            lis = json.load(open(file_path,'r'))
+            lis.append(result)
+            if len(lis) > 100:
+                lis = lis[1::-1]
+            json.dump(lis, open(file_path,'w'),indent = 4)
             time.sleep(5)
 
     except KeyboardInterrupt:
