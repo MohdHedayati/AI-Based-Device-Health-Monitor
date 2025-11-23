@@ -104,6 +104,19 @@ def collect_system_data():
     return json.dumps(system_data, indent=4)
 
 # gemini model setup
+new_model = genai.GenerativeModel(
+    model_name="gemini-2.5-pro",
+    system_instruction=(
+        "You are an AI system health advisor. "
+        "Analyze the provided system metrics and answer the user's query "
+        "in a clear, concise, accurate, technical way."
+    ),
+    generation_config=types.GenerationConfig(
+        temperature=0.2,
+        max_output_tokens=200,
+    )
+)
+
 config = types.GenerationConfig(
     temperature=0.1,
     max_output_tokens=200,
@@ -151,4 +164,3 @@ if __name__ == "__main__":
             print(f"{chat['timestamp']} - {chat['important_points']}")
     else:
         print("Exiting...")
-    
