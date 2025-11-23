@@ -1,12 +1,21 @@
 import psutil
 import datetime
 import platform
+import time
+import os
 import json
+import collections
+from typing import Optional, List
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, Field
+from toon import encode
 
 
-system_data_json = ""
+class SystemAnalysis(BaseModel):
+    status: str = Field(..., description="System status: 'Critical' or 'Stable'")
+    root_cause: str = Field(..., description="Brief analysis of the issue based on the TOON history.")
+    fix_script: Optional[dict] = Field(None, description="A JSON object containing the fix (e.g. {'command': 'kill', 'pid': 1234}). Only provide if Critical.")
 
 def get_cpu_usage():
     return psutil.cpu_percent(interval=1)
@@ -14,9 +23,9 @@ def get_cpu_usage():
 def get_memory_info():
     memory = psutil.virtual_memory()
     return {
-        "total_gb": f"{memory.total / (1024**3):.2f}",
-        "available_gb": f"{memory.available / (1024**3):.2f}",
-        "used_gb": f"{memory.used / (1024**3):.2f}",
+        "total_gb": round(memory.total / (1024**3), 2),
+        "available_gb": round(memory.available / (1024**3), 2),
+        "used_gb": round(memory.used / (1024**3), 2),
         "percentage_used": memory.percent
     }
 
@@ -25,9 +34,9 @@ def get_disk_info(path='/'):
         disk = psutil.disk_usage(path)
         return {
             "path": path,
-            "total_gb": f"{disk.total / (1024**3):.2f}",
-            "used_gb": f"{disk.used / (1024**3):.2f}",
-            "free_gb": f"{disk.free / (1024**3):.2f}",
+            "total_gb": round(disk.total / (1024**3), 2),
+            "used_gb": round(disk.used / (1024**3), 2),
+            "free_gb": round(disk.free / (1024**3), 2),
             "percentage_used": disk.percent
         }
     except FileNotFoundError:
@@ -35,112 +44,120 @@ def get_disk_info(path='/'):
 
 def get_cpu_temps():
     if not hasattr(psutil, "sensors_temperatures"):
-        return {"error": "Platform not supported for temperature sensors via psutil."}
-        
+        return {"error": "Platform not supported"}
     temps = psutil.sensors_temperatures()
+    if not temps: return {"info": "No sensors"}
     
-    if not temps:
-        return {"info": "Could not find any temperature sensors."}
-
     if 'coretemp' in temps:
         core_temps = {}
         for i, entry in enumerate(temps['coretemp']):
-            core_temps[f"core_{i}"] = {
-                "current_celsius": entry.current,
-                "high_celsius": entry.high,
-                "critical_celsius": entry.critical
-            }
+            core_temps[f"core_{i}"] = entry.current
         return {"coretemp": core_temps}
-    
-    all_temps = {}
-    for sensor_name, entries in temps.items():
-        all_temps[sensor_name] = []
-        for entry in entries:
-            all_temps[sensor_name].append({
-                "label": entry.label or 'N/A',
-                "current_celsius": entry.current
-            })
-    return all_temps
-
+    return {"info": "Sensors found but structure varies"}
 
 def get_battery_info():
-    if not hasattr(psutil, "sensors_battery"):
-        return {"error": "Platform not supported for battery sensors via psutil."}
-
+    if not hasattr(psutil, "sensors_battery"): return {"error": "No battery"}
     battery = psutil.sensors_battery()
-
-    if battery is None:
-        return {"status": "No battery detected."}
-
+    if battery is None: return {"status": "No battery"}
     return {
-        "percentage": f"{battery.percent:.2f}",
-        "secs_left": "N/A" if battery.secsleft < 0 else battery.secsleft,
-        "secs_left_human": "Charging" if battery.power_plugged else str(datetime.timedelta(seconds=battery.secsleft)),
+        "percentage": round(battery.percent, 2),
         "power_plugged": battery.power_plugged
     }
 
 def get_processes_info():
     processes = []
-    attrs = ['pid', 'name', 'username', 'cpu_percent', 'memory_percent']
+    attrs = ['pid', 'name', 'cpu_percent'] 
     for proc in psutil.process_iter(attrs=attrs, ad_value=None):
         try:
-            p_info = proc.info
-            if p_info['cpu_percent'] is not None and p_info['memory_percent'] is not None:
-                p_info['memory_percent'] = round(p_info['memory_percent'], 2)
-                processes.append(p_info)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-            
-    sorted_processes = sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)
-    
-    return sorted_processes[:5]
+            p = proc.info
+            if p['cpu_percent']:
+                processes.append(p)
+        except: pass
+    return sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)[:5]
 
 def main():
-    global system_data_json
-    timestamp = datetime.datetime.now().isoformat()
-
+    client = genai.Client()
+    
+    HISTORY_LENGTH = 12 
+    CPU_THRESHOLD = 5 
+    MEMORY_THRESHOLD = 80
+    
+    data_history = collections.deque(maxlen=HISTORY_LENGTH)
     psutil.cpu_percent(interval=None) 
 
-    system_data = {
-        "timestamp": timestamp,
-        "platform": platform.system(),
-        "cpu": {
-            "usage_percent": get_cpu_usage() 
-        },
-        "memory": get_memory_info(),
-        "disk_root": get_disk_info('/'),
-        "temperatures": get_cpu_temps(),
-        "battery": get_battery_info(),
-        "processes": get_processes_info()
-    }
+    print(f"--- System Monitor Started (CPU > {CPU_THRESHOLD}%, Mem > {MEMORY_THRESHOLD}%) ---")
 
-    system_data_json = json.dumps(system_data, indent=4)
+    try:
+        while True:
+            current_cpu = get_cpu_usage()
+            memory_info = get_memory_info()
+            current_memory = memory_info['percentage_used']
+            
+            system_data = {
+                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                "platform": platform.system(),
+                "cpu": {"usage_percent": current_cpu},
+                "memory": memory_info,
+                "disk": get_disk_info('/'),
+                "battery": get_battery_info(),
+                "processes": get_processes_info()
+            }
+            
+            data_history.append(system_data)
+            
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(f"Monitoring- CPU: {current_cpu}% | Memory: {current_memory}%")
+            
+            if current_cpu > CPU_THRESHOLD or current_memory > MEMORY_THRESHOLD:
+                print(f"\nHigh Load Detected (CPU: {current_cpu}%, Mem: {current_memory}%). Preparing TOON data...")
 
+                root_object = {"system_history": list(data_history)}
+                toon_data = encode(root_object)
+                
+                print(f"Sending {len(toon_data)} chars of TOON data to Gemini-2.5...")
+                trigger_msg = []
+                if current_cpu > CPU_THRESHOLD: trigger_msg.append(f"CPU is over {CPU_THRESHOLD}%")
+                if current_memory > MEMORY_THRESHOLD: trigger_msg.append(f"Memory is over {MEMORY_THRESHOLD}%")
+                
+                prompt = f"""
+                Here is the recent system history in TOON format:
+                
+                {toon_data}
+                
+                ALERT: {", ".join(trigger_msg)}.
+                Identify the process causing the issue in the history and provide a JSON fix to kill it.
+                """
+
+                config = types.GenerateContentConfig(
+                    system_instruction="You are an expert System Administrator. Analyze TOON metrics and output structured JSON fixes.",
+                    temperature=0.0,
+                    max_output_tokens=500,
+                    response_mime_type="application/json",
+                    response_json_schema=SystemAnalysis.model_json_schema()
+                )
+
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[prompt],
+                    config=config
+                )
+
+                if response.text:
+                    result = json.loads(response.text)
+ 
+                    print(json.dumps(result, indent=2))
+                    # if result.get('fix_script'):
+                    #     pid = result['fix_script'].get('pid')
+                    #     os.kill(pid, 9)
+                    
+                    input("\nPress Enter to continue monitoring...")
+                else:
+                    print("AI is not able to diagnose the issue.")
+                
+            time.sleep(2)
+
+    except KeyboardInterrupt:
+        print("\nStopping Monitor.")
 
 if __name__ == "__main__":
     main()
-
-
-system_instruction_template = (
-    f"{system_data_json}\n"
-)
-
-config = types.GenerateContentConfig(
-        system_instruction=system_instruction_template,
-        temperature=0.1,
-        max_output_tokens=500,
-    )   
-
-
-client = genai.Client()
-
-while True:
-    input_text = input("What do you want to ask? \n")
-    if(input_text.lower() == "exit"):
-        break
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[input_text],
-        config = config
-    )
-    print(response.text)
