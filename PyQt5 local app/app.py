@@ -30,7 +30,8 @@ def main():
     # Check env + token file to decide whether user is already logged in
     logged_in_env = os.environ.get(ENV_LOGGED_IN, "0") == "1"
     user_name = load_user_name_from_token()
-
+    print(logged_in_env)
+    print(user_name)
     if logged_in_env and user_name:
         # Show dashboard directly
         window = DashboardWindow(user_name=user_name)

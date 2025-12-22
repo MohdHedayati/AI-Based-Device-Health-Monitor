@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
 )
 from PyQt5.QtCore import Qt
+import subprocess
 
 TOKEN_FILE = "token.json"
 ENV_LOGGED_IN = "APP_LOGGED_IN"
@@ -36,6 +37,12 @@ class DashboardWindow(QWidget):
 
         self.setLayout(layout)
 
+        self.monitor_process = subprocess.Popen(
+            ["python", "get_info.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
     def handle_logout(self):
         # Delete local token file and reset env so next launch shows login
         if os.path.exists(TOKEN_FILE):
@@ -58,3 +65,13 @@ class DashboardWindow(QWidget):
         self.login_window = LoginWindow()
         self.login_window.show()
         self.close()
+        self.monitor_process.terminate()
+
+    def handle_upload(self):
+        try:
+            from uploader import upload
+            upload()
+            QMessageBox.information(self, "Success", "Data uploaded successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Upload Failed", str(e))
+

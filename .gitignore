@@ -7,7 +7,8 @@ __pycache__/
 
 *client_secret.json
 *token.json
-
+*/data
+*supabase_secrets.json
 
 # C extensions
 *.so

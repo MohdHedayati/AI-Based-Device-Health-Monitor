@@ -106,7 +106,7 @@ class LoginWindow(QWidget):
             with open(TOKEN_FILE, "w") as f:
                 json.dump(data_to_store, f)
 
-            os.environ[ENV_LOGGED_IN] = "1"
+            os.environ[ENV_LOGGED_IN] = 1
 
             from dashboard import DashboardWindow
 
