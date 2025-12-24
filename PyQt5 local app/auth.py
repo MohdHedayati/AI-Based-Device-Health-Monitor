@@ -16,7 +16,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 import webbrowser
 
 TOKEN_FILE = "token.json"
-ENV_LOGGED_IN = "APP_LOGGED_IN"
 
 SCOPES = [
     "openid",
@@ -105,9 +104,7 @@ class LoginWindow(QWidget):
 
             with open(TOKEN_FILE, "w") as f:
                 json.dump(data_to_store, f)
-
-            os.environ[ENV_LOGGED_IN] = "1"
-
+            
             from dashboard import DashboardWindow
 
             user_name = profile_info.get("name") or profile_info.get("email", "User")

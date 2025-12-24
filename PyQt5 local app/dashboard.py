@@ -51,18 +51,16 @@ class DashboardWindow(QWidget):
 
 
     def handle_logout(self):
-        # Delete local token file and reset env so next launch shows login
-        # if os.path.exists(TOKEN_FILE):
-        #     try:
-        #         os.remove(TOKEN_FILE)
-        #     except Exception as e:
-        #         QMessageBox.warning(
-        #             self,
-        #             "Logout Warning",
-        #             f"Could not delete token file:\n{e}",
-        #         )
-
-        os.environ[ENV_LOGGED_IN] = "0"
+        # Delete local token file  so next launch shows login
+        if os.path.exists(TOKEN_FILE):
+            try:
+                os.remove(TOKEN_FILE)
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    "Logout Warning",
+                    f"Could not delete token file:\n{e}",
+                )
 
         QMessageBox.information(self, "Logged Out", "You have been logged out.")
         if self.monitor_process and self.monitor_process.poll() is None:

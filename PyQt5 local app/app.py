@@ -8,8 +8,6 @@ from auth import LoginWindow
 from dashboard import DashboardWindow
 
 TOKEN_FILE = "token.json"          # where Google credentials are stored
-ENV_LOGGED_IN = "APP_LOGGED_IN"    # environment variable flag
-
 
 def load_user_name_from_token():
     if not os.path.exists(TOKEN_FILE):
@@ -25,16 +23,13 @@ def load_user_name_from_token():
 
 
 def main():
-    if 'APP_LOGGED_IN' not in os.environ:
-        os.environ['ENV_LOGGED_IN'] = "0"
+
     app = QApplication(sys.argv)
 
-    # Check env + token file to decide whether user is already logged in
-    logged_in_env = os.environ.get(ENV_LOGGED_IN) == "1"
+    # Check token file to decide whether user is already logged in
     user_name = load_user_name_from_token()
-    print(logged_in_env)
     print(user_name)
-    if logged_in_env and user_name:
+    if user_name:
         # Show dashboard directly
         window = DashboardWindow(user_name=user_name)
     else:
