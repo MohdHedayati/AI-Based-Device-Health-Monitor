@@ -113,7 +113,13 @@ def aggregate_samples(samples):
     }
 
 def main():
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+    if not os.path.exists(DATA_FILE):
+        directory = os.path.dirname(DATA_FILE)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory) # Creates directory and any necessary parent directories
+
+        with open(DATA_FILE, 'w') as f:
+                    f.write("[\n]")
     psutil.cpu_percent(interval=None)
 
     state = {
@@ -121,15 +127,15 @@ def main():
         "aggregated_samples": []
     }
 
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            saved = json.load(f)
-        data = saved.get("data", {})
-        state["aggregated_samples"] = data.get("aggregated_samples", [])
-        state["raw_samples"] = collections.deque(
-            data.get("raw_samples", []),
-            maxlen=MAX_RAW_SAMPLES
-        )
+    # if os.path.exists(DATA_FILE):
+    #     with open(DATA_FILE, "r") as f:
+    #         saved = json.load(f)
+    #     data = saved.get("data", {})
+    #     state["aggregated_samples"] = data.get("aggregated_samples", [])
+    #     state["raw_samples"] = collections.deque(
+    #         data.get("raw_samples", []),
+    #         maxlen=MAX_RAW_SAMPLES
+    #     )
 
     try:
         while True:
